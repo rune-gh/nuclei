@@ -49,3 +49,26 @@ func TestHeaderComponent(t *testing.T) {
 
 	require.Equal(t, "new-agent", rebuilt.Header.Get("User-Agent"), "unexpected header value")
 }
+
+func TestHeaderComponentMultiValueRebuildDoesNotDuplicate(t *testing.T) {
+	req, err := retryablehttp.NewRequest(http.MethodGet, "https://example.com", nil)
+	require.NoError(t, err)
+	req.Header.Add("X-Forwarded-For", "10.0.0.1")
+	req.Header.Add("X-Forwarded-For", "10.0.0.2")
+
+	header := NewHeader()
+	_, err = header.Parse(req)
+	require.NoError(t, err)
+
+	rebuilt, err := header.Rebuild()
+	require.NoError(t, err)
+	require.Equal(t, []string{"10.0.0.1", "10.0.0.2"}, rebuilt.Header.Values("X-Forwarded-For"), "an unchanged header should be sent as it was")
+
+	require.NoError(t, header.SetValue("X-Forwarded-For", "PAYLOAD"))
+	rebuilt, err = header.Rebuild()
+	require.NoError(t, err)
+	values := rebuilt.Header.Values("X-Forwarded-For")
+	require.Len(t, values, 2, "the fuzzed header should keep its number of values: %v", values)
+	require.Contains(t, values, "PAYLOAD")
+	require.Equal(t, []string{"10.0.0.1", "10.0.0.2"}, req.Header.Values("X-Forwarded-For"), "the original request should not change")
+}

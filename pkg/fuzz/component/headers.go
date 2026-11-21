@@ -94,6 +94,9 @@ func (q *Header) Rebuild() (*retryablehttp.Request, error) {
 			value = vx
 		}
 		if v, ok := value.([]interface{}); ok {
+			// The clone still has the original values, so replace them
+			// rather than adding the parsed ones again after them.
+			cloned.Header.Del(key)
 			for _, vv := range v {
 				cloned.Header.Add(key, vv.(string))
 			}
