@@ -222,3 +222,42 @@ func TestPrepareGeneratorValuesRendersPayloadsAgainstUnrenderedInput(t *testing.
 		require.Equal(t, `{{to_upper("x")}}`, values["ref"])
 	}
 }
+
+// A multi-value header used to be put back as its whole list printed as one
+// string, so every request fuzzing a later header sent "[a b]" in it. Headers
+// are visited in map order, so the check runs several times.
+func TestExecuteHeaderRuleRestoresMultiValueHeader(t *testing.T) {
+	rule := &Rule{
+		Part: "header",
+		Type: "replace",
+		Mode: "single",
+		Fuzz: SliceOrMapSlice{Value: []string{"PAYLOAD"}},
+	}
+	require.NoError(t, rule.Compile(nil, &protocols.ExecutorOptions{Options: &types.Options{}}))
+
+	for range 10 {
+		req, err := retryablehttp.NewRequest(http.MethodGet, queryRuleTarget, nil)
+		require.NoError(t, err)
+		req.Header.Add("X-Multi", "a")
+		req.Header.Add("X-Multi", "b")
+		req.Header.Set("X-One", "one")
+		req.Header.Set("X-Two", "two")
+
+		var sent [][]string
+		err = rule.Execute(&ExecuteRuleInput{
+			Input:       contextargs.NewWithInput(context.Background(), queryRuleTarget),
+			BaseRequest: req,
+			Callback: func(gr GeneratedRequest) bool {
+				if gr.Parameter != "X-Multi" {
+					sent = append(sent, gr.Request.Header.Values("X-Multi"))
+				}
+				return true
+			},
+		})
+		require.NoError(t, err)
+		require.Len(t, sent, 2, "X-One and X-Two should each be fuzzed once")
+		for _, values := range sent {
+			require.Equal(t, []string{"a", "b"}, values, "X-Multi should be sent unchanged while other headers are fuzzed")
+		}
+	}
+}

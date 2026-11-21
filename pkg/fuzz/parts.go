@@ -53,6 +53,8 @@ func (rule *Rule) executePartComponentOnValues(input *ExecuteRuleInput, payloadS
 	var fuzzedKeys []string
 	finalErr := ruleComponent.Iterate(func(key string, value interface{}) error {
 		valueStr := types.ToString(value)
+		// read it before SetValue, which can change a list in place
+		restoreStr := restoreValueOf(value, valueStr)
 		if !rule.matchKeyOrValue(key, valueStr) {
 			// ignore non-matching keys
 			return nil
@@ -92,7 +94,10 @@ func (rule *Rule) executePartComponentOnValues(input *ExecuteRuleInput, payloadS
 				return qerr
 			}
 
-			err = ruleComponent.SetValue(key, valueStr) // change back to previous value for temp
+			// change back to previous value for temp. SetValue only replaces the
+			// last item of a multi-value key, so put back that item rather than
+			// the whole list printed as one string.
+			err = ruleComponent.SetValue(key, restoreStr)
 			if err != nil {
 				return err
 			}
@@ -273,4 +278,20 @@ func (rule *Rule) executeRuleTypes(_ *ExecuteRuleInput, value, replacement strin
 		returnValue = rule.replaceRegex.ReplaceAllString(value, replacement)
 	}
 	return returnValue
+}
+
+// restoreValueOf returns the string that SetValue needs to put a value back as
+// it was parsed: the last item for a list, otherwise the value itself.
+func restoreValueOf(value interface{}, valueStr string) string {
+	if _, isBytes := value.([]byte); isBytes {
+		return valueStr
+	}
+	list, ok := value.([]interface{})
+	if !ok {
+		list, ok = component.IsTypedSlice(value)
+	}
+	if ok && len(list) > 0 {
+		return types.ToString(list[len(list)-1])
+	}
+	return valueStr
 }
