@@ -33,16 +33,22 @@ func (c *Cookie) Name() string {
 // Parse parses the component and returns the
 // parsed component
 func (c *Cookie) Parse(req *retryablehttp.Request) (bool, error) {
-	if len(req.Cookies()) == 0 {
-		return false, nil
+	// net/http drops cookies whose values it considers invalid, such as JSON
+	// values with quotes. Rebuild replaces the whole Cookie header, so split
+	// the raw header instead to keep every cookie the client sent.
+	parsedCookies := mapsutil.NewOrderedMap[string, any]()
+	for _, header := range req.Header.Values("Cookie") {
+		for _, pair := range httputil.SplitCookieHeader(header) {
+			name, value, _ := strings.Cut(strings.TrimSpace(pair), "=")
+			name = strings.TrimSpace(name)
+			if name == "" {
+				continue
+			}
+			parsedCookies.Set(name, value)
+		}
 	}
 	c.req = req
 	c.value = NewValue("")
-
-	parsedCookies := mapsutil.NewOrderedMap[string, any]()
-	for _, cookie := range req.Cookies() {
-		parsedCookies.Set(cookie.Name, cookie.Value)
-	}
 	if parsedCookies.Len() == 0 {
 		return false, nil
 	}

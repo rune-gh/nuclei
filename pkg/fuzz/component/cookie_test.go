@@ -116,3 +116,26 @@ func BenchmarkCookieComponentRebuild(b *testing.B) {
 		}
 	}
 }
+
+func TestCookieComponentKeepsCookiesNetHTTPRejects(t *testing.T) {
+	req, err := retryablehttp.NewRequest(http.MethodGet, "http://example.com/", nil)
+	require.NoError(t, err)
+	req.Header.Set("Cookie", `session=abc; pref={"theme":"dark"}; path=C:\tmp; id=1`)
+
+	cookies := NewCookie()
+	found, err := cookies.Parse(req)
+	require.NoError(t, err)
+	require.True(t, found)
+
+	var keys []string
+	require.NoError(t, cookies.Iterate(func(key string, _ interface{}) error {
+		keys = append(keys, key)
+		return nil
+	}))
+	require.Equal(t, []string{"session", "pref", "path", "id"}, keys, "every cookie should be fuzzable")
+
+	require.NoError(t, cookies.SetValue("id", "2"))
+	rebuilt, err := cookies.Rebuild()
+	require.NoError(t, err)
+	require.Equal(t, `session=abc; pref={"theme":"dark"}; path=C:\tmp; id=2`, rebuilt.Header.Get("Cookie"), "the other cookies should be sent unchanged")
+}
