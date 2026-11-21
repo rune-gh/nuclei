@@ -169,6 +169,18 @@ func TestParseRawRequestHeaderParsing(t *testing.T) {
 			host:    "example.com",
 			headers: map[string]string{"content-type": "text/plain"},
 		},
+		{
+			name:    "repeated cookie lines",
+			raw:     "GET / HTTP/1.1\r\nHost: example.com\r\ncookie: session=abc\r\ncookie: csrf=xyz\r\n\r\n",
+			host:    "example.com",
+			headers: map[string]string{"cookie": "session=abc; csrf=xyz"},
+		},
+		{
+			name:    "repeated header in another case",
+			raw:     "GET / HTTP/1.1\r\nHost: example.com\r\nX-Forwarded-For: 10.0.0.1\r\nx-forwarded-for: 10.0.0.2\r\n\r\n",
+			host:    "example.com",
+			headers: map[string]string{"X-Forwarded-For": "10.0.0.1, 10.0.0.2"},
+		},
 	}
 
 	for _, tt := range tests {

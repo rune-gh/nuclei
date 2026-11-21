@@ -297,7 +297,7 @@ func ParseRawRequest(raw string) (rr *RequestResponse, err error) {
 			}
 			continue
 		}
-		rr.Request.Headers.Set(key, value)
+		addRawHeader(&rr.Request.Headers, key, value)
 	}
 
 	// parse body
@@ -337,4 +337,25 @@ func ParseRawRequestWithURL(raw, url string) (rr *RequestResponse, err error) {
 	}
 	rr.URL = *urlx
 	return rr, nil
+}
+
+// addRawHeader adds one header line to headers. The map holds one value per
+// name, so a repeated line, in any letter case, is joined to the earlier one
+// instead of replacing it. HTTP/2 clients often send cookies as several
+// cookie lines, which are joined with "; " (RFC 9113 section 8.2.3); other
+// headers are joined with ", " (RFC 9110 section 5.3).
+func addRawHeader(headers *mapsutil.OrderedMap[string, string], key, value string) {
+	for _, existingKey := range headers.GetKeys() {
+		if !strings.EqualFold(existingKey, key) {
+			continue
+		}
+		existing, _ := headers.Get(existingKey)
+		separator := ", "
+		if strings.EqualFold(key, "Cookie") {
+			separator = "; "
+		}
+		headers.Set(existingKey, existing+separator+value)
+		return
+	}
+	headers.Set(key, value)
 }
