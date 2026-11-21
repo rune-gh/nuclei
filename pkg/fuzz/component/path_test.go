@@ -2,6 +2,7 @@ package component
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/projectdiscovery/retryablehttp-go"
@@ -169,4 +170,49 @@ func TestPathComponent_SQLInjection(t *testing.T) {
 
 	// Let's also test what the actual URL looks like
 	t.Logf("Full URL: %s", newReq.String())
+}
+
+func TestURLComponent_ReservedCharactersStayInPath(t *testing.T) {
+	var requestURI string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestURI = r.RequestURI
+	}))
+	defer server.Close()
+	client := retryablehttp.NewClient(retryablehttp.DefaultOptionsSingle)
+
+	tests := []struct {
+		name  string
+		path  string
+		key   string
+		value string
+		want  string
+	}{
+		{"encoded question mark in other segment", "/search/what%3Fx/1?q=1", "3", "2", "/search/what%3Fx/2?q=1"},
+		{"encoded hash in other segment", "/tag/c%23/1", "3", "2", "/tag/c%23/2"},
+		{"encoded slash stays one segment", "/files/a%2Fb/x", "3", "y", "/files/a%2Fb/y"},
+		{"payload with hash", "/user/1?q=1", "2", "1' OR 1=1#", "/user/1'%20OR%201=1%23?q=1"},
+		{"payload with question mark", "/user/1", "2", "x?y=z", "/user/x%3Fy=z"},
+		{"payload that is already encoded", "/a/b/c", "2", "%2e%2e%2f", "/a/%2e%2e%2f/c"},
+		{"traversal payload", "/a/b/c", "2", "../../etc/passwd", "/a/../../etc/passwd/c"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, err := retryablehttp.NewRequest(http.MethodGet, server.URL+tt.path, nil)
+			require.NoError(t, err)
+
+			path := NewPath()
+			_, err = path.Parse(req)
+			require.NoError(t, err)
+			require.NoError(t, path.SetValue(tt.key, tt.value))
+
+			rebuilt, err := path.Rebuild()
+			require.NoError(t, err)
+
+			requestURI = ""
+			resp, err := client.Do(rebuilt)
+			require.NoError(t, err)
+			_ = resp.Body.Close()
+			require.Equal(t, tt.want, requestURI)
+		})
+	}
 }
