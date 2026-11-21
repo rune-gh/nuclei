@@ -135,9 +135,15 @@ func (request *Request) MakeResultEventItem(wrapped *output.InternalWrappedEvent
 	return data
 }
 
-func rrToString(resourceRecords []dns.RR) string { // TODO rewrite with generics when available
+// rrToString returns the records one per line, as in the raw response, so
+// that a regex such as "IN\tMX\t(.+)" matches one record at a time instead
+// of running into the next one.
+func rrToString(resourceRecords []dns.RR) string {
 	buffer := &bytes.Buffer{}
-	for _, resourceRecord := range resourceRecords {
+	for i, resourceRecord := range resourceRecords {
+		if i > 0 {
+			buffer.WriteByte('\n')
+		}
 		buffer.WriteString(resourceRecord.String())
 	}
 	return buffer.String()
@@ -145,7 +151,10 @@ func rrToString(resourceRecords []dns.RR) string { // TODO rewrite with generics
 
 func questionToString(resourceRecords []dns.Question) string {
 	buffer := &bytes.Buffer{}
-	for _, resourceRecord := range resourceRecords {
+	for i, resourceRecord := range resourceRecords {
+		if i > 0 {
+			buffer.WriteByte('\n')
+		}
 		buffer.WriteString(resourceRecord.String())
 	}
 	return buffer.String()

@@ -237,6 +237,56 @@ func TestDNSOperatorExtract(t *testing.T) {
 	})
 }
 
+func TestDNSOperatorExtractMultipleAnswerRecords(t *testing.T) {
+	options := testutils.DefaultOptions
+
+	recursion := false
+	testutils.Init(options)
+	templateID := "testing-dns"
+	request := &Request{
+		RequestType: DNSRequestTypeHolder{DNSRequestType: MX},
+		Class:       "INET",
+		Retries:     5,
+		ID:          templateID,
+		Recursion:   &recursion,
+		Name:        "{{FQDN}}",
+	}
+	executerOpts := testutils.NewMockExecuterOptions(options, &testutils.TemplateInfo{
+		ID:   templateID,
+		Info: model.Info{SeverityHolder: severity.Holder{Severity: severity.Low}, Name: "test"},
+	})
+	err := request.Compile(executerOpts)
+	require.Nil(t, err, "could not compile dns request")
+
+	req := new(dns.Msg)
+	req.Question = append(req.Question, dns.Question{Name: "example.com.", Qtype: dns.TypeMX, Qclass: dns.ClassINET})
+
+	resp := new(dns.Msg)
+	resp.Rcode = dns.RcodeSuccess
+	header := dns.RR_Header{Name: "example.com.", Rrtype: dns.TypeMX, Class: dns.ClassINET, Ttl: 300}
+	resp.Answer = append(resp.Answer,
+		&dns.MX{Hdr: header, Preference: 10, Mx: "mx1.example.com."},
+		&dns.MX{Hdr: header, Preference: 20, Mx: "mx2.example.com."},
+	)
+
+	event := request.responseToDSLMap(req, resp, "example.com", "example.com", nil, time.Second)
+
+	extractor := &extractors.Extractor{
+		Part:       "answer",
+		Type:       extractors.ExtractorTypeHolder{ExtractorType: extractors.RegexExtractor},
+		Regex:      []string{"IN\tMX\t(.+)"},
+		RegexGroup: 1,
+	}
+	err = extractor.CompileExtractors()
+	require.Nil(t, err, "could not compile extractor")
+
+	data := request.Extract(event, extractor)
+	require.Equal(t, map[string]struct{}{
+		"10 mx1.example.com.": {},
+		"20 mx2.example.com.": {},
+	}, data, "each answer record should be extracted on its own")
+}
+
 func TestDNSDurationRequestIDExport(t *testing.T) {
 	options := testutils.DefaultOptions
 	testutils.Init(options)
