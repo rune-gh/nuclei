@@ -741,6 +741,28 @@ func TestActionExtract(t *testing.T) {
 	})
 }
 
+func TestActionExtractMissingAttribute(t *testing.T) {
+	response := `
+		<html>
+			<head>
+				<title>Nuclei Test Page</title>
+			</head>
+			<a id="test" href="/path">Wait for me!</a>
+		</html>`
+
+	actions := []*Action{
+		{ActionType: ActionTypeHolder{ActionType: ActionNavigate}, Data: map[string]string{"url": "{{BaseURL}}"}},
+		{ActionType: ActionTypeHolder{ActionType: ActionExtract}, Data: map[string]string{"by": "x", "xpath": "//a[@id='test']", "target": "attribute", "attribute": "title"}, Name: "title"},
+		{ActionType: ActionTypeHolder{ActionType: ActionExtract}, Data: map[string]string{"by": "x", "xpath": "//a[@id='test']", "target": "attribute", "attribute": "href"}, Name: "href"},
+	}
+
+	testHeadlessSimpleResponse(t, response, actions, 20*time.Second, func(page *Page, err error, out ActionData) {
+		require.Nil(t, err, "could not run page actions")
+		require.Equal(t, "", out["title"], "a missing attribute should extract an empty value")
+		require.Equal(t, "/path", out["href"], "could not extract attribute")
+	})
+}
+
 func TestActionSetMethod(t *testing.T) {
 	response := `
 		<html>

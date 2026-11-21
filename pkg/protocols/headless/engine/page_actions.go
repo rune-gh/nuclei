@@ -879,8 +879,13 @@ func (p *Page) ExtractElement(act *Action, out ActionData) error {
 			return errors.Wrap(err, "could not get attribute")
 		}
 
+		// Attribute returns nil when the element does not have the attribute
+		value := ""
+		if attrValue != nil {
+			value = *attrValue
+		}
 		if act.Name != "" {
-			out[act.Name] = *attrValue
+			out[act.Name] = value
 		}
 	default:
 		text, err := element.Text()
