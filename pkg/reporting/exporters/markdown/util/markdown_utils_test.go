@@ -90,53 +90,28 @@ func TestCreateTemplateInfoTable3Columns(t *testing.T) {
 	require.Equal(t, expected, table)
 }
 
-func TestEscapeCodeBlockMarkdown(t *testing.T) {
+func TestCreateCodeBlockKeepsContentVerbatim(t *testing.T) {
 	testCases := []struct {
-		name     string
-		input    string
-		expected string
+		name    string
+		content string
+		fence   string
 	}{
-		{
-			name:     "no special characters",
-			input:    "normal text without special chars",
-			expected: "normal text without special chars",
-		},
-		{
-			name:     "with backticks",
-			input:    "text with `backticks` inside",
-			expected: "text with \\`backticks\\` inside",
-		},
-		{
-			name:     "with backslashes",
-			input:    "text with \\ backslash",
-			expected: "text with \\\\ backslash",
-		},
-		{
-			name:     "with both backticks and backslashes",
-			input:    "text with `backticks` and \\ backslash",
-			expected: "text with \\`backticks\\` and \\\\ backslash",
-		},
-		{
-			name:     "with code block",
-			input:    "```code block```",
-			expected: "\\`\\`\\`code block\\`\\`\\`",
-		},
-		{
-			name:     "with escaped backtick",
-			input:    "escaped \\` backtick",
-			expected: "escaped \\\\\\` backtick",
-		},
-		{
-			name:     "with multiple consecutive backticks",
-			input:    "``double backticks``",
-			expected: "\\`\\`double backticks\\`\\`",
-		},
+		{"no special characters", "normal text", "```"},
+		{"backslashes", `curl -d '{\"a\":1}' C:\Windows`, "```"},
+		{"inline backticks", "text with `backticks` inside", "```"},
+		{"triple backticks", "before\n```\nafter", "````"},
+		{"longer run", "a ````` b", "``````"},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result := escapeCodeBlockMarkdown(tc.input)
-			require.Equal(t, tc.expected, result, "Failed to properly escape markdown for code blocks")
+			block := MarkdownFormatter{}.CreateCodeBlock("Response", tc.content, "http")
+			require.Equal(t, "\n**Response**\n"+tc.fence+"http\n"+tc.content+"\n"+tc.fence+"\n", block)
+
+			// No line of the content may close the block early.
+			for _, line := range strings.Split(tc.content, "\n") {
+				require.False(t, strings.HasPrefix(strings.TrimLeft(line, " "), tc.fence), "line %q closes the fence", line)
+			}
 		})
 	}
 }

@@ -1,6 +1,7 @@
 package format
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 	"testing"
@@ -11,6 +12,7 @@ import (
 	"github.com/projectdiscovery/nuclei/v3/pkg/output"
 	"github.com/projectdiscovery/nuclei/v3/pkg/reporting/exporters/markdown/util"
 	"github.com/stretchr/testify/require"
+	"github.com/yuin/goldmark"
 )
 
 func TestToMarkdownTableString(t *testing.T) {
@@ -70,6 +72,14 @@ func TestCreateReportDescription_MarkdownInjection(t *testing.T) {
 	result := CreateReportDescription(event, &util.MarkdownFormatter{}, false)
 	fmt.Println(result)
 
-	require.NotContains(t, result, "```\r\n\r\nReferences:\r\n- https://rce.ee/pwned")
-	require.NotContains(t, result, "```sh\r\nbash -i >& /dev/tcp")
+	// Render the report as Markdown. The injected fence must not close the
+	// Response block, so the payload has to stay inside it as plain code.
+	var rendered bytes.Buffer
+	require.NoError(t, goldmark.Convert([]byte(result), &rendered))
+	html := rendered.String()
+
+	require.Equal(t, 3, strings.Count(html, "<pre><code"), "expected only the Request, Response and CURL command blocks")
+	require.NotContains(t, html, `<a href="https://rce.ee/pwned"`)
+	require.NotContains(t, html, `<code class="language-sh">bash -i`)
+	require.Contains(t, html, "References:\r\n- https://rce.ee/pwned", "the payload should be shown verbatim inside the Response block")
 }
