@@ -1249,3 +1249,35 @@ func TestBrowserCookiesOutsideInputPath(t *testing.T) {
 		require.Equal(t, "abc", out["token"], "a cookie scoped to another path must still be exposed")
 	})
 }
+
+func TestRoutingRuleHandlerHistoryKeepsRequestBody(t *testing.T) {
+	actions := []*Action{
+		{ActionType: ActionTypeHolder{ActionType: ActionSetHeader}, Data: map[string]string{"part": "request", "key": "Test", "value": "Hello"}},
+		{ActionType: ActionTypeHolder{ActionType: ActionNavigate}, Data: map[string]string{"url": "{{BaseURL}}"}},
+		{ActionType: ActionTypeHolder{ActionType: ActionWaitLoad}},
+		{ActionType: ActionTypeHolder{ActionType: ActionScript}, Data: map[string]string{"code": `async () => { await fetch("/submit", {method: "POST", body: "user=admin&token=s3cret"}); }`}},
+	}
+
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/submit" {
+			body, _ := io.ReadAll(r.Body)
+			_, _ = fmt.Fprintf(w, "got %s", body)
+			return
+		}
+		_, _ = fmt.Fprintln(w, `<html><body>page</body></html>`)
+	}
+
+	testHeadless(t, actions, 20*time.Second, handler, func(page *Page, err error, out ActionData) {
+		require.NoError(t, err, "could not run page actions")
+
+		var submit *HistoryData
+		for i := range page.History {
+			if strings.Contains(page.History[i].RawResponse, "got user=admin") {
+				submit = &page.History[i]
+			}
+		}
+		require.NotNil(t, submit, "the POST should be in the page history")
+		require.Contains(t, submit.RawRequest, "POST /submit", "the history should keep the request line")
+		require.Contains(t, submit.RawRequest, "user=admin&token=s3cret", "the history should keep the request body")
+	})
+}

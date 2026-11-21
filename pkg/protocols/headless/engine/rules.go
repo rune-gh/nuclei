@@ -1,7 +1,9 @@
 package engine
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httputil"
 	"strings"
@@ -56,6 +58,19 @@ func (p *Page) routingRuleHandler(httpClient *http.Client) func(ctx *rod.Hijack)
 			}
 		}
 
+		// The http client drains the body when it sends the request, so keep
+		// a copy to put back for the history dump below.
+		var reqBody []byte
+		if req.Body != nil {
+			var err error
+			if reqBody, err = io.ReadAll(req.Body); err != nil {
+				gologger.Verbose().Msgf("headless: could not read request body for %s: %s", req.URL, err)
+			}
+			_ = req.Body.Close()
+			req.Body = io.NopCloser(bytes.NewReader(reqBody))
+			req.ContentLength = int64(len(reqBody))
+		}
+
 		// each http request is performed via the native go http client
 		// we first inject the shared cookies
 		if !p.options.DisableCookie {
@@ -97,6 +112,9 @@ func (p *Page) routingRuleHandler(httpClient *http.Client) func(ctx *rod.Hijack)
 		}
 
 		// store history
+		if req.Body != nil {
+			req.Body = io.NopCloser(bytes.NewReader(reqBody))
+		}
 		var rawReq string
 		if raw, err := httputil.DumpRequestOut(req, true); err == nil {
 			rawReq = string(raw)
