@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -328,6 +329,36 @@ func TestClose_NoEventsWritesNoFile(t *testing.T) {
 	require.NoError(t, exp.Close())
 	_, statErr := os.Stat(out)
 	require.True(t, os.IsNotExist(statErr))
+}
+
+func TestClose_ReportFileURI(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("checks a unix file URI")
+	}
+	t.Chdir(t.TempDir())
+	wd, err := os.Getwd()
+	require.NoError(t, err)
+
+	exp, err := New(&Options{File: "report.sarif"})
+	require.NoError(t, err)
+	require.NoError(t, exp.Export(makeEvent()))
+	require.NoError(t, exp.Close())
+
+	bin, err := os.ReadFile("report.sarif")
+	require.NoError(t, err)
+	var log upstream.SarifLog
+	require.NoError(t, json.Unmarshal(bin, &log))
+	require.Len(t, log.Runs, 1)
+	require.NotEmpty(t, log.Runs[0].Invocations)
+	require.NotEmpty(t, log.Runs[0].Invocations[0].ResponseFiles)
+	require.Equal(t, "file://"+filepath.Join(wd, "report.sarif"), log.Runs[0].Invocations[0].ResponseFiles[0].Uri)
+}
+
+func TestFileURI(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("checks a unix file URI")
+	}
+	require.Equal(t, "file:///tmp/nuclei%20out/report.sarif", fileURI("/tmp/nuclei out/report.sarif"))
 }
 
 func TestExport_Close_RoundTrip(t *testing.T) {

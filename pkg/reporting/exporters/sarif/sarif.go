@@ -2,8 +2,10 @@ package sarif
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -74,7 +76,7 @@ func (exporter *Exporter) addToolDetails() {
 	exporter.sarif.RegisterTool(driver)
 
 	reportLocation := sarif.ArtifactLocation{
-		Uri: "file:///" + exporter.options.File,
+		Uri: fileURI(exporter.options.File),
 		Description: &sarif.Message{
 			Text: "Nuclei Sarif Report",
 		},
@@ -87,6 +89,21 @@ func (exporter *Exporter) addToolDetails() {
 		ExecutionSuccessful: true,
 	}
 	exporter.sarif.RegisterToolInvocation(invocation)
+}
+
+// fileURI returns the file URI of a report path. Prefixing "file:///" to the
+// path as given gives "file:////tmp/report.sarif" for an absolute path and
+// points a relative path at the root of the file system.
+func fileURI(file string) string {
+	if absolute, err := filepath.Abs(file); err == nil {
+		file = absolute
+	}
+	file = filepath.ToSlash(file)
+	if !strings.HasPrefix(file, "/") {
+		// a Windows path such as C:/report.sarif
+		file = "/" + file
+	}
+	return (&url.URL{Scheme: "file", Path: file}).String()
 }
 
 // getSeverity in terms of sarif
