@@ -16,11 +16,15 @@ import (
 type KV struct {
 	Map        mapsutil.Map[string, any]
 	OrderedMap *mapsutil.OrderedMap[string, any]
+
+	// normalizedKeys holds the `key_N` keys that the form decoder created
+	// for duplicate parameters. nil when the KV was not built by it.
+	normalizedKeys map[string]struct{}
 }
 
 // Clones the current state of the KV struct
 func (kv *KV) Clone() KV {
-	newKV := KV{}
+	newKV := KV{normalizedKeys: maps.Clone(kv.normalizedKeys)}
 	if kv.OrderedMap == nil {
 		newKV.Map = maps.Clone(kv.Map)
 		return newKV

@@ -65,3 +65,28 @@ func TestQueryComponentDoesNotMergePrefixParameterNames(t *testing.T) {
 	require.Equal(t, "foo=a&foobar=b&foobar=c", rebuilt.RawQuery, "unexpected query string")
 	require.Equal(t, "https://example.com?foo=a&foobar=b&foobar=c", rebuilt.String(), "unexpected url")
 }
+
+func TestQueryComponentKeepsParametersNamedLikeDuplicateAliases(t *testing.T) {
+	req, err := retryablehttp.NewRequest(http.MethodGet, "https://example.com?address=home&address_1=apt5", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	query := NewQuery()
+	_, err = query.Parse(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = query.SetValue("address_1", "fuzz")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rebuilt, err := query.Rebuild()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	require.Equal(t, "address=home&address_1=fuzz", rebuilt.RawQuery, "unexpected query string")
+}

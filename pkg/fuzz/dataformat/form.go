@@ -59,7 +59,7 @@ func (f *Form) Encode(data KV) (string, error) {
 		// here origKey is base key without _1, _2 etc.
 		if origKey != "" && !reNormalized.MatchString(origKey) {
 			params.Iterate(func(key string, value []string) bool {
-				if baseKey, ok := normalizedKeyBase(key); ok && baseKey == origKey {
+				if baseKey, ok := normalizedKeyBase(key); ok && baseKey == origKey && data.isNormalizedKey(key) {
 					m := map[string]string{}
 					if normalized[origKey] != nil {
 						m = normalized[origKey]
@@ -141,6 +141,7 @@ func (f *Form) Decode(data string) (KV, error) {
 	ordered_params.Merge(data)
 
 	values := mapsutil.NewOrderedMap[string, any]()
+	normalizedKeys := map[string]struct{}{}
 	ordered_params.Iterate(func(key string, value []string) bool {
 		if len(value) == 1 {
 			values.Set(key, value[0])
@@ -149,13 +150,29 @@ func (f *Form) Decode(data string) (KV, error) {
 			// last value is considered and previous values are exposed with _1, _2, _3 etc.
 			// note that last value will not be included in _1, _2, _3 etc.
 			for i := 0; i < len(value)-1; i++ {
-				values.Set(key+"_"+strconv.Itoa(i+1), value[i])
+				normalizedKey := key + "_" + strconv.Itoa(i+1)
+				values.Set(normalizedKey, value[i])
+				normalizedKeys[normalizedKey] = struct{}{}
 			}
 			values.Set(key, value[len(value)-1])
 		}
 		return true
 	})
-	return KVOrderedMap(&values), nil
+	kv := KVOrderedMap(&values)
+	kv.normalizedKeys = normalizedKeys
+	return kv, nil
+}
+
+// isNormalizedKey reports whether key is a `key_N` alias created by the form
+// decoder for a duplicate parameter, rather than a parameter that is really
+// named that way (e.g. `address` and `address_1`). A KV that was not decoded
+// by the form decoder treats every `key_N` as an alias.
+func (kv *KV) isNormalizedKey(key string) bool {
+	if kv.normalizedKeys == nil {
+		return true
+	}
+	_, ok := kv.normalizedKeys[key]
+	return ok
 }
 
 // Name returns the name of the encoder
