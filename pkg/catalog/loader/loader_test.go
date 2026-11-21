@@ -862,3 +862,55 @@ http:
 	require.Len(t, loaded, 1)
 	require.Equal(t, "global-matchers-template", loaded[0].ID)
 }
+
+func TestLoadTemplatesWithTagsDoesNotWarnAboutMissingIgnoreFile(t *testing.T) {
+	root := t.TempDir()
+	cfg := config.DefaultConfig
+	oldRoot := cfg.TemplatesDirectory
+	t.Cleanup(func() { cfg.SetTemplatesDir(oldRoot) })
+	cfg.SetTemplatesDir(root)
+
+	templatePath := filepath.Join(t.TempDir(), "valid.yaml")
+	require.NoError(t, os.WriteFile(templatePath, []byte(`id: valid
+
+info:
+  name: Valid
+  author: pdteam
+  severity: info
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}"
+`), 0o600))
+
+	var output bytes.Buffer
+	logger := &gologger.Logger{}
+	logger.SetFormatter(formatter.NewCLI(false))
+	logger.SetWriter(&utils.CaptureWriter{Buffer: &output})
+	logger.SetMaxLevel(levels.LevelDebug)
+
+	options := testutils.DefaultOptions.Copy()
+	options.Logger = logger
+	options.Templates = []string{templatePath}
+	options.ExecutionId = "loader-missing-ignore-file"
+	testutils.Init(options)
+	t.Cleanup(func() {
+		testutils.Cleanup(options)
+	})
+	catalog := disk.NewCatalog("")
+	executerOpts := testutils.NewMockExecuterOptions(options, nil)
+	executerOpts.Catalog = catalog
+	executerOpts.Parser = templates.NewParser()
+	executerOpts.Logger = logger
+
+	store, err := New(NewConfig(options, catalog, executerOpts))
+	require.NoError(t, err)
+
+	output.Reset()
+	loaded, err := store.LoadTemplatesWithTags([]string{templatePath}, nil)
+	require.NoError(t, err)
+	require.Len(t, loaded, 1)
+	// the runner and the SDK engine already warn once about the missing file
+	require.NotContains(t, output.String(), ".nuclei-ignore")
+}
