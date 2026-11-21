@@ -59,6 +59,26 @@ func TestGraphqlIsType(t *testing.T) {
 	require.False(t, g.IsType(`{"variables":{"host":"example.com"}}`))
 }
 
+func TestGraphqlDecodeEncode_KeepsVariableNumbers(t *testing.T) {
+	g := NewGraphql()
+
+	body := `{"query":"query User($id: ID!, $ratio: Float) { user(id: $id, ratio: $ratio) { name } }","variables":{"id":9007199254740993,"ratio":1.10,"name":"a"}}`
+	decoded, err := g.Decode(body)
+	require.NoError(t, err)
+
+	decoded.Set("name", "b")
+	encoded, err := g.Encode(decoded)
+	require.NoError(t, err)
+
+	var got struct {
+		Variables map[string]json.RawMessage `json:"variables"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(encoded), &got))
+	require.Equal(t, "9007199254740993", string(got.Variables["id"]))
+	require.Equal(t, "1.10", string(got.Variables["ratio"]))
+	require.Equal(t, `"b"`, string(got.Variables["name"]))
+}
+
 func TestGraphqlDecodeEncodeVariables(t *testing.T) {
 	g := NewGraphql()
 
@@ -66,7 +86,7 @@ func TestGraphqlDecodeEncodeVariables(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, map[string]any{
 		"host":   "example.com",
-		"port":   float64(80),
+		"port":   json.Number("80"),
 		"path":   "/robots.txt",
 		"scheme": "http",
 	}, fuzzableKV(t, decoded))

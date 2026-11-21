@@ -60,7 +60,11 @@ func parseGraphQLHTTPBody(data string, validateQuery bool) (graphQLHTTPBody, boo
 	}
 
 	var body graphQLHTTPBody
-	if err := json.Unmarshal([]byte(trimmed), &body); err != nil {
+	// Keep variable numbers as json.Number so that 64-bit IDs and decimals
+	// are sent back exactly as they came, as in the JSON data format.
+	decoder := json.NewDecoder(strings.NewReader(trimmed))
+	decoder.UseNumber()
+	if err := decoder.Decode(&body); err != nil {
 		return graphQLHTTPBody{}, false
 	}
 	if strings.TrimSpace(body.Query) == "" {
