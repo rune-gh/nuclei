@@ -1,6 +1,7 @@
 package component
 
 import (
+	"encoding/json"
 	"reflect"
 	"strconv"
 
@@ -102,6 +103,12 @@ func (v *Value) SetParsedValue(key, value string) bool {
 		origValue = v
 	case string:
 		origValue = value
+	case json.Number:
+		parsed, err := strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			return false
+		}
+		origValue = json.Number(strconv.FormatInt(parsed, 10))
 	case int, int32, int64, float32, float64:
 		parsed, err := strconv.ParseInt(value, 10, 64)
 		if err != nil {

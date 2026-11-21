@@ -1,6 +1,8 @@
 package dataformat
 
 import (
+	"errors"
+	"io"
 	"strings"
 
 	"github.com/projectdiscovery/nuclei/v3/pkg/utils/json"
@@ -38,8 +40,18 @@ func (j *JSON) Encode(data KV) (string, error) {
 // Decode decodes the data from JSON format
 func (j *JSON) Decode(data string) (KV, error) {
 	var decoded map[string]interface{}
-	err := json.Unmarshal([]byte(data), &decoded)
-	return KVMap(decoded), err
+	// Numbers are kept as json.Number so that the fields that are not fuzzed
+	// are sent back as they came. A float64 would round integers above 2^53,
+	// such as 64-bit IDs.
+	decoder := json.NewDecoder(strings.NewReader(data))
+	decoder.UseNumber()
+	if err := decoder.Decode(&decoded); err != nil {
+		return KVMap(decoded), err
+	}
+	if err := decoder.Decode(new(interface{})); !errors.Is(err, io.EOF) {
+		return KVMap(decoded), errors.New("invalid json: unexpected data after the top-level value")
+	}
+	return KVMap(decoded), nil
 }
 
 // Name returns the name of the encoder

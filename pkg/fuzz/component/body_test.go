@@ -54,6 +54,49 @@ func TestBodyComponent(t *testing.T) {
 	require.Equal(t, `{"foo":"baz"}`, string(newBody), "unexpected body")
 }
 
+func TestBodyComponentKeepsLargeJSONIntegers(t *testing.T) {
+	req, err := retryablehttp.NewRequest("POST", "https://example.com", strings.NewReader(`{"id":9007199254740993,"name":"a"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	body := New(RequestBodyComponent)
+	_, err = body.Parse(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	values := map[string]string{}
+	_ = body.Iterate(func(key string, value interface{}) error {
+		values[key] = fmt.Sprint(value)
+		return nil
+	})
+	require.Equal(t, "9007199254740993", values["id"], "unexpected value for the integer field")
+
+	require.NoError(t, body.SetValue("name", "b"))
+	rebuilt, err := body.Rebuild()
+	if err != nil {
+		t.Fatal(err)
+	}
+	newBody, err := io.ReadAll(rebuilt.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	require.Equal(t, `{"id":9007199254740993,"name":"b"}`, string(newBody), "unexpected body")
+
+	require.NoError(t, body.SetValue("id", "42"))
+	rebuilt, err = body.Rebuild()
+	if err != nil {
+		t.Fatal(err)
+	}
+	newBody, err = io.ReadAll(rebuilt.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	require.Equal(t, `{"id":42,"name":"b"}`, string(newBody), "unexpected body after setting the integer field")
+}
+
 func TestBodyXMLComponent(t *testing.T) {
 	var body = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><stockCheck><productId>1</productId><storeId>1</storeId></stockCheck>"
 
