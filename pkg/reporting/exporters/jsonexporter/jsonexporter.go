@@ -38,13 +38,16 @@ func (exporter *Exporter) Export(event *output.ResultEvent) error {
 	exporter.mutex.Lock()
 	defer exporter.mutex.Unlock()
 
+	// The event is shared with the other exporters, so omit the raw
+	// request and response from a copy.
+	row := *event
 	if exporter.options.OmitRaw {
-		event.Request = ""
-		event.Response = ""
+		row.Request = ""
+		row.Response = ""
 	}
 
 	// Add the event to the rows
-	exporter.rows = append(exporter.rows, *event)
+	exporter.rows = append(exporter.rows, row)
 
 	return nil
 }

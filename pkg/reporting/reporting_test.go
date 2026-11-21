@@ -166,3 +166,43 @@ func (t *recordingTracker) CreateIssue(event *output.ResultEvent) (*filters.Crea
 	t.urls = append(t.urls, event.URL)
 	return &filters.CreateIssueResponse{IssueID: "test"}, nil
 }
+
+func TestReportingOmitRawIsPerExporter(t *testing.T) {
+	dir := t.TempDir()
+	jsonPath := filepath.Join(dir, "report.json")
+	jsonlPath := filepath.Join(dir, "report.jsonl")
+	client, err := New(&Options{
+		JSONExporter:  &jsonexporter.Options{File: jsonPath, OmitRaw: true},
+		JSONLExporter: &jsonl.Options{File: jsonlPath},
+	}, "", true)
+	require.NoError(t, err)
+
+	event := &output.ResultEvent{
+		TemplateID: "raw",
+		Type:       "http",
+		Host:       "example.com",
+		Matched:    "http://example.com",
+		Request:    "GET / HTTP/1.1",
+		Response:   "HTTP/1.1 200 OK",
+	}
+	event.Info.SeverityHolder.Severity = severity.Info
+	require.NoError(t, client.CreateIssue(event))
+	client.Close()
+
+	require.Equal(t, "GET / HTTP/1.1", event.Request, "an exporter must not change the shared event")
+
+	jsonData, err := os.ReadFile(jsonPath)
+	require.NoError(t, err)
+	var jsonRows []output.ResultEvent
+	require.NoError(t, json.Unmarshal(jsonData, &jsonRows))
+	require.Len(t, jsonRows, 1)
+	require.Empty(t, jsonRows[0].Request)
+	require.Empty(t, jsonRows[0].Response)
+
+	jsonlData, err := os.ReadFile(jsonlPath)
+	require.NoError(t, err)
+	var jsonlRow output.ResultEvent
+	require.NoError(t, json.Unmarshal(bytes.TrimSpace(jsonlData), &jsonlRow))
+	require.Equal(t, "GET / HTTP/1.1", jsonlRow.Request, "the jsonl exporter does not omit raw data")
+	require.Equal(t, "HTTP/1.1 200 OK", jsonlRow.Response)
+}

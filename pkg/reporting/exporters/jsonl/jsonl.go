@@ -42,13 +42,16 @@ func (exporter *Exporter) Export(event *output.ResultEvent) error {
 	exporter.mutex.Lock()
 	defer exporter.mutex.Unlock()
 
+	// The event is shared with the other exporters, so omit the raw
+	// request and response from a copy.
+	row := *event
 	if exporter.options.OmitRaw {
-		event.Request = ""
-		event.Response = ""
+		row.Request = ""
+		row.Response = ""
 	}
 
 	// Add the event to the rows
-	exporter.rows = append(exporter.rows, *event)
+	exporter.rows = append(exporter.rows, row)
 
 	// If the batch size is greater than 0 and the number of rows has reached the batch, flush it to the database
 	if exporter.options.BatchSize > 0 && len(exporter.rows) >= exporter.options.BatchSize {
