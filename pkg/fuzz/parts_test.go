@@ -4,6 +4,7 @@ import (
 	"regexp"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/projectdiscovery/nuclei/v3/pkg/protocols"
 	"github.com/projectdiscovery/nuclei/v3/pkg/protocols/common/interactsh"
@@ -296,6 +297,34 @@ func TestExecuteEvaluateUsesRenderedPayloadForAllRuleTypes(t *testing.T) {
 
 			require.NoError(t, err)
 			require.Empty(t, urls)
+			require.Equal(t, item.expected, got)
+		})
+	}
+}
+
+func TestExecuteRuleTypesKeepPayloadAndValueIntact(t *testing.T) {
+	items := []struct {
+		name         string
+		ruleType     ruleType
+		value        string
+		payload      string
+		replaceRegex string
+		expected     string
+	}{
+		{name: "infix keeps multi-byte characters whole", ruleType: infixRuleType, value: "éa", payload: "X", expected: "éXa"},
+		{name: "infix after a single multi-byte character", ruleType: infixRuleType, value: "é", payload: "X", expected: "éX"},
+		{name: "infix in the middle of multi-byte text", ruleType: infixRuleType, value: "日本語", payload: "X", expected: "日X本語"},
+		{name: "replace-regex keeps dollar signs", ruleType: replaceRegexRuleType, value: "id=123", payload: "1;cat$IFS/etc/passwd", replaceRegex: `[0-9]+`, expected: "id=1;cat$IFS/etc/passwd"},
+		{name: "replace-regex keeps braces after dollar", ruleType: replaceRegexRuleType, value: "https://example.com", payload: "${jndi:ldap://x}", replaceRegex: `https?://.*`, expected: "${jndi:ldap://x}"},
+	}
+	for _, item := range items {
+		t.Run(item.name, func(t *testing.T) {
+			rule := &Rule{ruleType: item.ruleType}
+			if item.replaceRegex != "" {
+				rule.replaceRegex = regexp.MustCompile(item.replaceRegex)
+			}
+			got := rule.executeRuleTypes(nil, item.value, item.payload)
+			require.True(t, utf8.ValidString(got), "result should be valid UTF-8: %q", got)
 			require.Equal(t, item.expected, got)
 		})
 	}

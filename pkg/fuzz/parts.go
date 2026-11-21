@@ -4,6 +4,7 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/projectdiscovery/nuclei/v3/pkg/fuzz/component"
 	"github.com/projectdiscovery/nuclei/v3/pkg/protocols/common/generators"
@@ -261,7 +262,13 @@ func (rule *Rule) executeRuleTypes(_ *ExecuteRuleInput, value, replacement strin
 			builder.WriteString(replacement)
 			returnValue = builder.String()
 		} else {
+			// Split at the middle character, not the middle byte, so that a
+			// multi-byte character is never cut in two.
+			// Binary values that are not UTF-8 keep the byte split.
 			middleIndex := len(value) / 2
+			if utf8.ValidString(value) {
+				middleIndex = runeMiddle(value)
+			}
 			builder.WriteString(value[:middleIndex])
 			builder.WriteString(replacement)
 			builder.WriteString(value[middleIndex:])
@@ -270,7 +277,24 @@ func (rule *Rule) executeRuleTypes(_ *ExecuteRuleInput, value, replacement strin
 	case replaceRuleType:
 		returnValue = replacement
 	case replaceRegexRuleType:
-		returnValue = rule.replaceRegex.ReplaceAllString(value, replacement)
+		// The payload is literal text: "$IFS" or "${jndi:...}" must not be
+		// expanded as references to capture groups.
+		returnValue = rule.replaceRegex.ReplaceAllLiteralString(value, replacement)
 	}
 	return returnValue
+}
+
+// runeMiddle returns the byte offset of the middle character of value. A
+// single character counts as its own first half, like a single byte does.
+func runeMiddle(value string) int {
+	half := utf8.RuneCountInString(value) / 2
+	if half == 0 {
+		return len(value)
+	}
+	offset := 0
+	for range half {
+		_, size := utf8.DecodeRuneInString(value[offset:])
+		offset += size
+	}
+	return offset
 }
