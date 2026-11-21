@@ -210,8 +210,15 @@ func CheckKrbError(b []byte) ([]byte, error) {
 	return b, nil
 }
 
+// hashcatChecksumLen is the length of the checksum that the hashcat formats
+// take from the start of the encrypted part.
+const hashcatChecksumLen = 16
+
 // TGStoHashcat converts a TGS to a hashcat format.
 func TGStoHashcat(tgs messages.Ticket, username string) (string, error) {
+	if len(tgs.EncPart.Cipher) < hashcatChecksumLen {
+		return "", fmt.Errorf("ticket cipher is %d bytes, shorter than the %d-byte checksum", len(tgs.EncPart.Cipher), hashcatChecksumLen)
+	}
 	return fmt.Sprintf("$krb5tgs$%d$*%s$%s$%s*$%s$%s",
 		tgs.EncPart.EType,
 		username,
@@ -224,6 +231,9 @@ func TGStoHashcat(tgs messages.Ticket, username string) (string, error) {
 
 // ASRepToHashcat converts an AS-REP message to a hashcat format
 func ASRepToHashcat(asrep messages.ASRep) (string, error) {
+	if len(asrep.EncPart.Cipher) < hashcatChecksumLen {
+		return "", fmt.Errorf("AS-REP cipher is %d bytes, shorter than the %d-byte checksum", len(asrep.EncPart.Cipher), hashcatChecksumLen)
+	}
 	return fmt.Sprintf("$krb5asrep$%d$%s@%s:%s$%s",
 		asrep.EncPart.EType,
 		asrep.CName.PrincipalNameString(),
